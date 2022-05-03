@@ -1,0 +1,231 @@
+---
+Name: Ajay Iyer
+title: "Project 2 Part 2 Logistic Regression"
+output: html_document
+---
+
+```{r }
+library(testthat)
+library(digest)
+library(stringr)
+library(glmnet) #Logistic Regression
+library(latex2exp)
+library(pROC) #ROC Plot
+```
+
+
+```{r}
+breast = read.csv("/Users/ajayiyer/Desktop/DAT 402/Project 2/data.csv")
+head(breast)
+dim(breast)
+```
+
+
+```{r}
+breast <- subset (breast, select = -id)
+breast
+```
+
+```{r}
+breast <- subset(breast, select=-Bruh)
+breast
+```
+
+```{r}
+sum(is.na(breast))
+```
+
+```{r}
+breast
+```
+
+```{r}
+str(breast)
+```
+
+```{r}
+breast$diagnosis<-ifelse(breast$diagnosis=="M",'Yes','No')
+breast
+```
+
+```{r}
+set.seed(1234)
+traini = sample(1:nrow(breast),size=0.7*nrow(breast),replace=FALSE)
+
+train = breast[traini, ]
+test = breast[-traini,]
+dim(train)
+dim (test)
+```
+
+```{r}
+Y = train$diagnosis
+X = train[ ,!(names(train) %in% c("diagnosis"))] #all but diagnosis
+dim(X)
+```
+
+```{r}
+X = model.matrix( ~ . , data=X)[,-1]
+
+dim(X)
+
+X[1:5,]
+
+```
+
+*** Ridge Regularization
+
+
+```{r}
+mylambda=seq(0,2,by=0.005) 
+
+cvfit = cv.glmnet(X,Y,family = "binomial",lambda=mylambda,type.measure="deviance",
+                  nfolds = 10, alpha = 0) 
+
+plot(cvfit)
+
+```
+
+```{r}
+cvfit = cv.glmnet(X,Y,family = "binomial",lambda=mylambda, type.measure="mse",
+                  nfolds = 10, alpha = 0) 
+
+plot(cvfit)  #note on x-axis in the plot is log(lambda), not log(1/lambda)
+```
+
+```{r}
+#the value of optimal lambda that minimizes loss (we used mse)
+cvfit$lambda.min
+
+#the value of optimal lambda by the 1SE rule
+cvfit$lambda.1se
+```
+
+```{r}
+noquote("Using coef(cvfit):") 
+coef(cvfit)
+
+cat("\n\n")
+
+noquote('Using predict(object=cvfit, type="coefficients"):')
+predict(object=cvfit, type="coefficients")
+```
+
+```{r}
+all(coef(cvfit)==predict(object=cvfit, type="coefficients"))
+```
+
+```{r}
+testY = test$diagnosis
+testX = test[ ,!(names(test) %in% c("diagnosis"))] #all but diagnosis
+
+testX = model.matrix( ~ ., data=testX)[,-1]
+pihat = predict(object=cvfit, newx = testX, type="response")
+
+length(pihat)
+dim(testX)
+
+```
+
+```{r}
+ylogical = (testY == "Yes")
+ROCcrv = roc(response=ylogical, predictor=pihat)
+AUC = auc(ROCcrv)
+
+plot(x=ROCcrv$specificities,y=ROCcrv$sensitivities, main=paste("AUC = ",round(AUC,2)), 
+     xlab="Specificity", ylab="Sensitivity", xlim=c(1,0), type="l", col="red")
+abline(a=1,b=-1,lty="dashed")
+```
+
+```{r}
+str(AUC)
+```
+
+```{r}
+#print the precise value of AUC
+AUC
+```
+
+```{r}
+yhat = ifelse(pihat>0.5,"Yes","No")
+```
+
+```{r}
+tbl = table(yhat, testY)
+tbl
+```
+
+```{r}
+#accuracy
+acc = (tbl[1,1]+tbl[2,2])/sum(tbl)
+acc
+```
+
+```{r}
+#false negative rate
+FNR <- tbl[1,2]/sum(tbl[,2])
+FNR
+```
+
+```{r}
+plot(cvfit$glmnet.fit)
+```
+
+*** Lasso Regularization
+
+
+```{r}
+cvfit2 = cv.glmnet(X,Y,family = "binomial",lambda=mylambda, type.measure="deviance",
+                  nfolds = 10, alpha = 1)  #alpha- ridge:0, lasso:1
+```
+
+```{r}
+coef(cvfit2)
+```
+
+```{r}
+#plot Lasso based on deviance measure
+plot(cvfit2)  #note on x-axis in the plot is log(lambda), not log(1/lambda)
+
+#plot coefficients for various models; ignore the warning message
+plot(cvfit2$glmnet.fit)
+```
+
+```{r}
+##Number of non-zero coefficients vs. $\lambda$
+
+plot(cvfit2$glmnet$lambda,cvfit2$glmnet$df, 
+     main=TeX("Number of Non-zero Coeff's for Each $\\lambda$"),pch=16)
+abline(v=cvfit2$lambda.min,col="red",lty="dashed")
+abline(v=cvfit2$lambda.1se,col="blue",lty="dashed")
+```
+
+```{r}
+ytest = test$diagnosis
+Xtest = test[ ,!(names(test) %in% c("diagnosis"))] #all but diagnosis
+
+Xtest = model.matrix( ~ ., data=Xtest)[,-1]
+pihat2 = predict(object=cvfit2, newx = Xtest, type="response")
+
+length(pihat2)
+dim(Xtest)
+```
+
+```{r}
+ROCcrv2 = roc(response=ylogical, predictor=pihat2)
+AUC2 = auc(ROCcrv2)
+AUC2
+```
+
+```{r}
+yhat2 = ifelse(pihat2>0.5,"Yes","No")
+tbl2 = table(yhat2, ytest)
+tbl2
+```
+
+```{r}
+acc2 = (tbl2[1,1]+tbl2[2,2])/sum(tbl2)
+acc2
+FNR2 = tbl2[1,2]/sum(tbl2[,2])
+FNR2 
+```
